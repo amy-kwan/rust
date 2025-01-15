@@ -1,0 +1,32 @@
+warning: repr(C) does not follow the power alignment rule. This may affect platform C ABI compatibility for this type
+  --> $DIR/reprc-power-alignment.rs:10:5
+   |
+LL |     a: f64,
+   |     ^^^^^^
+   |
+note: the lint level is defined here
+  --> $DIR/reprc-power-alignment.rs:6:9
+   |
+LL | #![warn(uses_power_alignment)]
+   |         ^^^^^^^^^^^^^^^^^^^^
+
+warning: repr(C) does not follow the power alignment rule. This may affect platform C ABI compatibility for this type
+  --> $DIR/reprc-power-alignment.rs:23:5
+   |
+LL |     a: f32,
+   |     ^^^^^^
+
+warning: repr(C) does not follow the power alignment rule. This may affect platform C ABI compatibility for this type
+  --> $DIR/reprc-power-alignment.rs:37:5
+   |
+LL |     x: Floats,
+   |     ^^^^^^^^^
+
+warning: repr(C) does not follow the power alignment rule. This may affect platform C ABI compatibility for this type
+  --> $DIR/reprc-power-alignment.rs:49:5
+   |
+LL |     x: FloatAgg1,
+   |     ^^^^^^^^^^^^
+
+warning: 4 warnings emitted
+

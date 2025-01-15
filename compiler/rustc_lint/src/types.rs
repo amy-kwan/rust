@@ -1,14 +1,17 @@
 use std::iter;
 use std::ops::ControlFlow;
 
-use rustc_abi::{BackendRepr, ExternAbi, TagEncoding, Variants, WrappingRange};
+use rustc_abi::{
+    BackendRepr, ExternAbi, FieldIdx, TagEncoding, VariantIdx, Variants, WrappingRange,
+};
 use rustc_data_structures::fx::FxHashSet;
 use rustc_errors::DiagMessage;
 use rustc_hir::{Expr, ExprKind, LangItem};
 use rustc_middle::bug;
 use rustc_middle::ty::layout::{LayoutOf, SizeSkeleton};
 use rustc_middle::ty::{
-    self, AdtKind, GenericArgsRef, Ty, TyCtxt, TypeSuperVisitable, TypeVisitable, TypeVisitableExt,
+    self, Adt, AdtKind, GenericArgsRef, Ty, TyCtxt, TypeSuperVisitable, TypeVisitable,
+    TypeVisitableExt,
 };
 use rustc_session::{declare_lint, declare_lint_pass, impl_lint_pass};
 use rustc_span::def_id::LocalDefId;
@@ -24,7 +27,7 @@ use crate::lints::{
     AtomicOrderingStore, ImproperCTypes, InvalidAtomicOrderingDiag, InvalidNanComparisons,
     InvalidNanComparisonsSuggestion, UnpredictableFunctionPointerComparisons,
     UnpredictableFunctionPointerComparisonsSuggestion, UnusedComparisons,
-    VariantSizeDifferencesDiag,
+    UsesPowerAlignment, VariantSizeDifferencesDiag,
 };
 use crate::{LateContext, LateLintPass, LintContext, fluent_generated as fluent};
 
@@ -727,7 +730,33 @@ declare_lint! {
     "proper use of libc types in foreign item definitions"
 }
 
-declare_lint_pass!(ImproperCTypesDefinitions => [IMPROPER_CTYPES_DEFINITIONS]);
+declare_lint! {
+    /// The AIX target follows the power alignment rule. This rule specifies
+    /// that structs with either a:
+    ///   - floating-point data type as its first member, or
+    ///   - first member being an aggregate whose recursively first member is a
+    ///     floating-point data type
+    /// must have its natural alignment. This is currently unimplemented within
+    /// the compiler, so a warning is produced in these situations.
+    ///
+    /// ### Example
+    ///
+    /// ```rust
+    /// pub struct Floats {
+    ///     a: f64,
+    ///     b: u8,
+    ///     c: f64,
+    /// }
+    /// ```
+    ///
+    /// A warning should be produced for the above struct as the first member
+    /// of the struct is an f64.
+    USES_POWER_ALIGNMENT,
+    Warn,
+    "floating point types within structs do not follow the power alignment rule under repr(C)"
+}
+
+declare_lint_pass!(ImproperCTypesDefinitions => [IMPROPER_CTYPES_DEFINITIONS, USES_POWER_ALIGNMENT]);
 
 #[derive(Clone, Copy)]
 pub(crate) enum CItemKind {
@@ -1539,6 +1568,51 @@ impl ImproperCTypesDefinitions {
             vis.check_type_for_ffi_and_report_errors(span, fn_ptr_ty, true, false);
         }
     }
+
+    fn check_arg_for_power_alignment<'tcx>(
+        &mut self,
+        cx: &LateContext<'tcx>,
+        ty: Ty<'tcx>,
+    ) -> bool {
+        // Structs (under repr(C)) follow the power alignment rule if:
+        //   - the first argument of the struct is a floating-point type, or
+        //   - the first argument of the struct is an aggregate whose
+        //     recursively first member is a floating-point type
+        if ty.is_floating_point() {
+            return true;
+        } else if let Adt(adt_def, _) = ty.kind()
+            && adt_def.is_struct()
+        {
+            let first_variant = adt_def.variant(VariantIdx::ZERO);
+            if let Some(first) = first_variant.fields.get(FieldIdx::ZERO) {
+                let field_ty = cx.tcx.type_of(first.did).instantiate_identity();
+                return self.check_arg_for_power_alignment(cx, field_ty);
+            }
+        }
+        return false;
+    }
+
+    fn check_struct_for_power_alignment<'tcx>(
+        &mut self,
+        cx: &LateContext<'tcx>,
+        item: &'tcx hir::Item<'tcx>,
+    ) {
+        let adt_def = cx.tcx.adt_def(item.owner_id.to_def_id());
+        if adt_def.repr().c()
+            && cx.tcx.sess.target.os == "aix"
+            && !adt_def.all_fields().next().is_none()
+        {
+            let struct_variant_data = item.expect_struct().0;
+            // Analyze only the first member of the struct to see if it
+            // follows the power alignment rule.
+            let first_field_def = struct_variant_data.fields()[0];
+            let def_id = first_field_def.def_id;
+            let ty = cx.tcx.type_of(def_id).instantiate_identity();
+            if self.check_arg_for_power_alignment(cx, ty) {
+                cx.emit_span_lint(USES_POWER_ALIGNMENT, first_field_def.span, UsesPowerAlignment);
+            }
+        }
+    }
 }
 
 /// `ImproperCTypesDefinitions` checks items outside of foreign items (e.g. stuff that isn't in
@@ -1562,8 +1636,13 @@ impl<'tcx> LateLintPass<'tcx> for ImproperCTypesDefinitions {
             }
             // See `check_fn`..
             hir::ItemKind::Fn { .. } => {}
+            // Structs are checked based on if they follow the power alignment
+            // rule (under repr(C)).
+            hir::ItemKind::Struct(..) => {
+                self.check_struct_for_power_alignment(cx, item);
+            }
             // See `check_field_def`..
-            hir::ItemKind::Union(..) | hir::ItemKind::Struct(..) | hir::ItemKind::Enum(..) => {}
+            hir::ItemKind::Union(..) | hir::ItemKind::Enum(..) => {}
             // Doesn't define something that can contain a external type to be checked.
             hir::ItemKind::Impl(..)
             | hir::ItemKind::TraitAlias(..)

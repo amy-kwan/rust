@@ -915,6 +915,8 @@ lint_unused_closure =
     }{$post} that must be used
     .note = closures are lazy and do nothing unless called
 
+lint_uses_power_alignment = repr(C) does not follow the power alignment rule. This may affect platform C ABI compatibility for this type
+
 lint_unused_comparisons = comparison is useless due to type limits
 
 lint_unused_coroutine =
