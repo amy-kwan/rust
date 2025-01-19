@@ -1,7 +1,7 @@
 warning: repr(C) does not follow the power alignment rule. This may affect platform C ABI compatibility for this type
-  --> $DIR/reprc-power-alignment.rs:10:5
+  --> $DIR/reprc-power-alignment.rs:12:5
    |
-LL |     a: f64,
+LL |     c: f64,
    |     ^^^^^^
    |
 note: the lint level is defined here
@@ -11,22 +11,82 @@ LL | #![warn(uses_power_alignment)]
    |         ^^^^^^^^^^^^^^^^^^^^
 
 warning: repr(C) does not follow the power alignment rule. This may affect platform C ABI compatibility for this type
-  --> $DIR/reprc-power-alignment.rs:23:5
+  --> $DIR/reprc-power-alignment.rs:39:5
    |
-LL |     a: f32,
+LL |     b: f64,
    |     ^^^^^^
 
 warning: repr(C) does not follow the power alignment rule. This may affect platform C ABI compatibility for this type
-  --> $DIR/reprc-power-alignment.rs:37:5
+  --> $DIR/reprc-power-alignment.rs:46:5
    |
-LL |     x: Floats,
+LL |     y: f64,
+   |     ^^^^^^
+
+warning: repr(C) does not follow the power alignment rule. This may affect platform C ABI compatibility for this type
+  --> $DIR/reprc-power-alignment.rs:52:5
+   |
+LL |     y: Floats,
    |     ^^^^^^^^^
 
 warning: repr(C) does not follow the power alignment rule. This may affect platform C ABI compatibility for this type
-  --> $DIR/reprc-power-alignment.rs:49:5
+  --> $DIR/reprc-power-alignment.rs:58:5
    |
-LL |     x: FloatAgg1,
+LL |     y: FloatAgg2,
    |     ^^^^^^^^^^^^
 
-warning: 4 warnings emitted
+warning: repr(C) does not follow the power alignment rule. This may affect platform C ABI compatibility for this type
+  --> $DIR/reprc-power-alignment.rs:59:5
+   |
+LL |     z: FloatAgg2,
+   |     ^^^^^^^^^^^^
+
+warning: repr(C) does not follow the power alignment rule. This may affect platform C ABI compatibility for this type
+  --> $DIR/reprc-power-alignment.rs:65:5
+   |
+LL |     y: FloatAgg2,
+   |     ^^^^^^^^^^^^
+
+warning: repr(C) does not follow the power alignment rule. This may affect platform C ABI compatibility for this type
+  --> $DIR/reprc-power-alignment.rs:71:5
+   |
+LL |     y: FloatAgg2,
+   |     ^^^^^^^^^^^^
+
+warning: repr(C) does not follow the power alignment rule. This may affect platform C ABI compatibility for this type
+  --> $DIR/reprc-power-alignment.rs:72:5
+   |
+LL |     z: FloatAgg3,
+   |     ^^^^^^^^^^^^
+
+warning: repr(C) does not follow the power alignment rule. This may affect platform C ABI compatibility for this type
+  --> $DIR/reprc-power-alignment.rs:78:5
+   |
+LL |     y: Floats,
+   |     ^^^^^^^^^
+
+warning: repr(C) does not follow the power alignment rule. This may affect platform C ABI compatibility for this type
+  --> $DIR/reprc-power-alignment.rs:85:5
+   |
+LL |     y: Floats,
+   |     ^^^^^^^^^
+
+warning: repr(C) does not follow the power alignment rule. This may affect platform C ABI compatibility for this type
+  --> $DIR/reprc-power-alignment.rs:98:3
+   |
+LL |   d: f64,
+   |   ^^^^^^
+
+warning: repr(C) does not follow the power alignment rule. This may affect platform C ABI compatibility for this type
+  --> $DIR/reprc-power-alignment.rs:103:3
+   |
+LL |   b: B,
+   |   ^^^^
+
+warning: repr(C) does not follow the power alignment rule. This may affect platform C ABI compatibility for this type
+  --> $DIR/reprc-power-alignment.rs:112:3
+   |
+LL |   d: D,
+   |   ^^^^
+
+warning: 14 warnings emitted
 
