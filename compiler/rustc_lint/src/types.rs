@@ -1,16 +1,14 @@
 use std::iter;
 use std::ops::ControlFlow;
 
-use rustc_abi::{
-    BackendRepr, ExternAbi, FieldIdx, TagEncoding, VariantIdx, Variants, WrappingRange,
-};
+use rustc_abi::{BackendRepr, ExternAbi, TagEncoding, VariantIdx, Variants, WrappingRange};
 use rustc_data_structures::fx::FxHashSet;
 use rustc_errors::DiagMessage;
 use rustc_hir::{Expr, ExprKind, LangItem};
 use rustc_middle::bug;
 use rustc_middle::ty::layout::{LayoutOf, SizeSkeleton};
 use rustc_middle::ty::{
-    self, Adt, AdtKind, GenericArgsRef, Ty, TyCtxt, TypeSuperVisitable, TypeVisitable,
+    self, Adt, AdtKind, FloatTy, GenericArgsRef, Ty, TyCtxt, TypeSuperVisitable, TypeVisitable,
     TypeVisitableExt,
 };
 use rustc_session::{declare_lint, declare_lint_pass, impl_lint_pass};
@@ -763,8 +761,8 @@ declare_lint! {
     ///  - offset_of!(Floats, a) == 0
     ///  - offset_of!(Floats, b) == 8
     ///  - offset_of!(Floats, c) == 12
-    /// A warning should be produced for the above struct as the first field
-    /// of the struct is an f64.
+    /// However, rust currently aligns `c` at offset_of!(Floats, c) == 16.
+    /// Thus, a warning should be produced for the above struct in this case.
     USES_POWER_ALIGNMENT,
     Warn,
     "Structs do not follow the power alignment rule under repr(C)"
@@ -1592,24 +1590,16 @@ impl ImproperCTypesDefinitions {
         //   - the first field of the struct is a floating-point type, or
         //   - the first field of the struct is an aggregate whose
         //     recursively first field is a floating-point type
-        if ty.is_floating_point() {
+        if ty.is_floating_point() && *ty.kind() == ty::Float(FloatTy::F64) {
             return true;
         } else if let Adt(adt_def, _) = ty.kind()
             && adt_def.is_struct()
         {
             let struct_variant = adt_def.variant(VariantIdx::ZERO);
-            //println!("AKWAN - struct variant: {:#?}", struct_variant);
-            for (index, ..) in struct_variant.fields.iter().enumerate() {
-                if index != 0
-                    && let Some(non_first_member) =
-                        struct_variant.fields.get(FieldIdx::from_usize(index))
-                {
-                    //println!("AKWAN - nested struct: {}, {:#?}", index, non_first_member);
-                    let field_ty = cx.tcx.type_of(non_first_member.did).instantiate_identity();
-                    //println!("AKWAN - non-1st field ty: {:#?}", field_ty);
-                    if self.check_arg_for_power_alignment(cx, field_ty) {
-                        return true;
-                    }
+            for struct_field in &struct_variant.fields {
+                let field_ty = cx.tcx.type_of(struct_field.did).instantiate_identity();
+                if self.check_arg_for_power_alignment(cx, field_ty) {
+                    return true;
                 }
             }
         }
@@ -1628,7 +1618,10 @@ impl ImproperCTypesDefinitions {
         {
             let struct_variant_data = item.expect_struct().0;
             //println!("AKWAN: struct variant data: {:#?}", struct_variant_data);
-            for (index, field_def) in struct_variant_data.fields().iter().enumerate() {
+            for (index, ..) in struct_variant_data.fields().iter().enumerate() {
+                // Struct fields (after the first field) are checked for the
+                // power alignment rule, as fields after the first field would
+                // be the fields that are misaligned.
                 if index != 0 {
                     //println!("AKWAN: non-1st def: {}, {:#?}", index, field_def);
                     let first_field_def = struct_variant_data.fields()[index];
