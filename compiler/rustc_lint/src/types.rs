@@ -26,8 +26,8 @@ use crate::lints::{
     AmbiguousWidePointerComparisonsAddrSuggestion, AtomicOrderingFence, AtomicOrderingLoad,
     AtomicOrderingStore, ImproperCTypes, InvalidAtomicOrderingDiag, InvalidNanComparisons,
     InvalidNanComparisonsSuggestion, UnpredictableFunctionPointerComparisons,
-    UnpredictableFunctionPointerComparisonsSuggestion, UnusedComparisons,
-    UsesPowerAlignment, VariantSizeDifferencesDiag,
+    UnpredictableFunctionPointerComparisonsSuggestion, UnusedComparisons, UsesPowerAlignment,
+    VariantSizeDifferencesDiag,
 };
 use crate::{LateContext, LateLintPass, LintContext, fluent_generated as fluent};
 
@@ -731,13 +731,22 @@ declare_lint! {
 }
 
 declare_lint! {
-    /// The AIX target follows the power alignment rule. This rule specifies
-    /// that structs with either a:
-    ///   - floating-point data type as its first member, or
-    ///   - first member being an aggregate whose recursively first member is a
-    ///     floating-point data type
-    /// must have its natural alignment. This is currently unimplemented within
-    /// the compiler, so a warning is produced in these situations.
+    /// In it's platform C ABI, the AIX target follows the power alignment rule
+    /// for structs. This rule applies the natural alignment of the first struct
+    /// field if it is a floating-point type, or is an aggregate whose
+    /// recursively "first" field is a floating-point type.
+    /// The alignment for subsequent fields of the associated structs use an
+    /// alignment value where the floating-point type is aligned on a 4-byte
+    /// boundary.
+    /// In this case, "natural alignment" (detailed in
+    /// https://www.ibm.com/docs/en/xl-c-and-cpp-aix/16.1?topic=data-using-alignment-modes#alignment)
+    /// refers to the floating-point type being aligned to a multiple of its
+    /// size (for example, the size of a double is 8-bytes, and so is 8-byte
+    /// aligned).
+    ///
+    /// The power alignment rule for structs need for C compatibility is
+    /// currently unimplemented within repr(C) in the compiler, so a warning is
+    /// produced in these situations.
     ///
     /// ### Example
     ///
@@ -749,11 +758,16 @@ declare_lint! {
     /// }
     /// ```
     ///
-    /// A warning should be produced for the above struct as the first member
+    /// The power alignment rule specifies that the above struct has the
+    /// following alignment:
+    ///  - offset_of!(Floats, a) == 0
+    ///  - offset_of!(Floats, b) == 8
+    ///  - offset_of!(Floats, c) == 12
+    /// A warning should be produced for the above struct as the first field
     /// of the struct is an f64.
     USES_POWER_ALIGNMENT,
     Warn,
-    "floating point types within structs do not follow the power alignment rule under repr(C)"
+    "Structs do not follow the power alignment rule under repr(C)"
 }
 
 declare_lint_pass!(ImproperCTypesDefinitions => [IMPROPER_CTYPES_DEFINITIONS, USES_POWER_ALIGNMENT]);
@@ -1575,18 +1589,28 @@ impl ImproperCTypesDefinitions {
         ty: Ty<'tcx>,
     ) -> bool {
         // Structs (under repr(C)) follow the power alignment rule if:
-        //   - the first argument of the struct is a floating-point type, or
-        //   - the first argument of the struct is an aggregate whose
-        //     recursively first member is a floating-point type
+        //   - the first field of the struct is a floating-point type, or
+        //   - the first field of the struct is an aggregate whose
+        //     recursively first field is a floating-point type
         if ty.is_floating_point() {
             return true;
         } else if let Adt(adt_def, _) = ty.kind()
             && adt_def.is_struct()
         {
-            let first_variant = adt_def.variant(VariantIdx::ZERO);
-            if let Some(first) = first_variant.fields.get(FieldIdx::ZERO) {
-                let field_ty = cx.tcx.type_of(first.did).instantiate_identity();
-                return self.check_arg_for_power_alignment(cx, field_ty);
+            let struct_variant = adt_def.variant(VariantIdx::ZERO);
+            //println!("AKWAN - struct variant: {:#?}", struct_variant);
+            for (index, ..) in struct_variant.fields.iter().enumerate() {
+                if index != 0
+                    && let Some(non_first_member) =
+                        struct_variant.fields.get(FieldIdx::from_usize(index))
+                {
+                    //println!("AKWAN - nested struct: {}, {:#?}", index, non_first_member);
+                    let field_ty = cx.tcx.type_of(non_first_member.did).instantiate_identity();
+                    //println!("AKWAN - non-1st field ty: {:#?}", field_ty);
+                    if self.check_arg_for_power_alignment(cx, field_ty) {
+                        return true;
+                    }
+                }
             }
         }
         return false;
@@ -1603,13 +1627,21 @@ impl ImproperCTypesDefinitions {
             && !adt_def.all_fields().next().is_none()
         {
             let struct_variant_data = item.expect_struct().0;
-            // Analyze only the first member of the struct to see if it
-            // follows the power alignment rule.
-            let first_field_def = struct_variant_data.fields()[0];
-            let def_id = first_field_def.def_id;
-            let ty = cx.tcx.type_of(def_id).instantiate_identity();
-            if self.check_arg_for_power_alignment(cx, ty) {
-                cx.emit_span_lint(USES_POWER_ALIGNMENT, first_field_def.span, UsesPowerAlignment);
+            //println!("AKWAN: struct variant data: {:#?}", struct_variant_data);
+            for (index, field_def) in struct_variant_data.fields().iter().enumerate() {
+                if index != 0 {
+                    //println!("AKWAN: non-1st def: {}, {:#?}", index, field_def);
+                    let first_field_def = struct_variant_data.fields()[index];
+                    let def_id = first_field_def.def_id;
+                    let ty = cx.tcx.type_of(def_id).instantiate_identity();
+                    if self.check_arg_for_power_alignment(cx, ty) {
+                        cx.emit_span_lint(
+                            USES_POWER_ALIGNMENT,
+                            first_field_def.span,
+                            UsesPowerAlignment,
+                        );
+                    }
+                }
             }
         }
     }
