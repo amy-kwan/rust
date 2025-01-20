@@ -1619,7 +1619,8 @@ impl ImproperCTypesDefinitions {
     ) {
         let adt_def = cx.tcx.adt_def(item.owner_id.to_def_id());
         if adt_def.repr().c()
-            && !adt_def.repr().packed() && cx.tcx.sess.target.os == "aix"
+            && !adt_def.repr().packed()
+            && cx.tcx.sess.target.os == "aix"
             && !adt_def.all_fields().next().is_none()
         {
             let struct_variant_data = item.expect_struct().0;
