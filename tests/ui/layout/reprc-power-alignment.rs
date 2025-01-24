@@ -131,7 +131,7 @@ pub struct G {
     d: f32,
     e: f64, //~ WARNING repr(C) does not follow the power alignment rule. This may affect platform C ABI compatibility for this type
 }
-// Should not warn on #[repr(packed)].
+// Should not warn on #[repr(packed)], or structs that use #[repr(packed)] structs.
 #[repr(packed)]
 pub struct H {
     a: u8,
@@ -147,6 +147,16 @@ pub struct I {
     c: f64,
     d: f32,
     e: f64,
+}
+#[repr(C)]
+pub struct J {
+    a: u8,
+    b: I,
+}
+#[repr(C)]
+pub struct K {
+    a: f32,
+    b: H,
 }
 
 fn main() { }

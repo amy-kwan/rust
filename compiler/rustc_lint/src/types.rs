@@ -1613,6 +1613,8 @@ impl ImproperCTypesDefinitions {
             return true;
         } else if let Adt(adt_def, _) = ty.kind()
             && adt_def.is_struct()
+            && adt_def.repr().c()
+            && !adt_def.repr().packed()
         {
             let struct_variant = adt_def.variant(VariantIdx::ZERO);
             // Within a nested struct, all fields are examined to correctly
